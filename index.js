@@ -8,7 +8,14 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH' , 'DELETE'],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 // mongodb uri
@@ -32,17 +39,22 @@ async function run() {
     const plateShareDb = client.db('plate_share_DB');
     const userCollection = plateShareDb.collection('users');
     
+    // get users
+    app.get('/users', async (req, res) => {
+      try {
+        const users = await userCollection.find().toArray();
+        res.send(users);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      }
+    });
+
     // post user
     app.post('/users', async (req, res) => {
       const newUser = req.body;
       const result = await userCollection.insertOne(newUser);
       res.send(result)
     })
-    // get users
-    app.get('/users', async (req, res) => {
-        const users = await userCollection.find().toArray();
-        res.send(users);
-    });
 
 
     // Send a ping to confirm a successful connection
