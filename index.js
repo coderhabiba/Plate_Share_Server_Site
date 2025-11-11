@@ -32,7 +32,12 @@ async function run() {
     const plateShareDb = client.db('plate_share_DB');
     const userCollection = plateShareDb.collection('users');
     
-
+    // post user
+    app.post('/users', async (req, res) => {
+      const newUser = req.body;
+      const result = await userCollection.insertOne(newUser);
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db('admin').command({ ping: 1 });
