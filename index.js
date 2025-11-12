@@ -1,13 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express();
-const port = process.env.PORT || 3000;
 const dotenv = require('dotenv');
-
 dotenv.config();
 
-// Middleware
+const app = express();
+const port = process.env.PORT || 3000;
+
+// middleware
 app.use(
   cors({
     origin: '*',
@@ -15,13 +15,11 @@ app.use(
     credentials: true,
   })
 );
-
 app.use(express.json());
 
-// mongodb uri
+// uri
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.sugbz4l.mongodb.net/?appName=Cluster0`;
 
-// MongoClient
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -32,7 +30,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server
     await client.connect();
 
     const plateShareDb = client.db('plate_share_DB');
@@ -40,45 +37,50 @@ async function run() {
     const foodCollection = plateShareDb.collection('foods');
     const foodRequestCollection = plateShareDb.collection('food-requests');
 
-    // get users
+    // users
     app.get('/users', async (req, res) => {
       try {
         const users = await userCollection.find().toArray();
         res.send(users);
       } catch (error) {
         console.error('Error fetching users:', error);
+        res.status(500).send({ message: 'Server error fetching users' });
       }
     });
 
-    // post user
     app.post('/users', async (req, res) => {
-      const newUser = req.body;
-      const email = newUser.email;
-      const query = { email: email };
-      const existingUser = await userCollection.findOne(query);
-      if (existingUser) {
-        return res.status(409).send({ message: 'User already exists' });
+      try {
+        const newUser = req.body;
+        const existingUser = await userCollection.findOne({
+          email: newUser.email,
+        });
+        if (existingUser) {
+          return res.status(409).send({ message: 'User already exists' });
+        }
+        const result = await userCollection.insertOne(newUser);
+        res.send(result);
+      } catch (error) {
+        console.error('Error adding user:', error);
+        res.status(500).send({ message: 'Server error adding user' });
       }
-      const result = await userCollection.insertOne(newUser);
-      res.send(result);
     });
 
-    // add food
+    // foods
     app.post('/foods', async (req, res) => {
       try {
         const newFood = req.body;
         if (!newFood.donator || !newFood.donator.email) {
           return res.status(400).send({ message: 'Donator info missing' });
         }
-        newFood.food_status = newFood.food_status || 'Available';
+        newFood.food_status = newFood.food_status || 'available';
         const result = await foodCollection.insertOne(newFood);
         res.send(result);
       } catch (error) {
         console.error('Error adding food:', error);
+        res.status(500).send({ message: 'Server error adding food' });
       }
     });
 
-    // get all foods and my added foods also
     app.get('/foods', async (req, res) => {
       try {
         const { donatorEmail } = req.query;
@@ -90,10 +92,10 @@ async function run() {
         res.send(foods);
       } catch (error) {
         console.error('Error fetching foods:', error);
+        res.status(500).send({ message: 'Server error fetching foods' });
       }
     });
 
-    // fodd details
     app.get('/foods/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -101,77 +103,118 @@ async function run() {
         res.send(food);
       } catch (error) {
         console.error('Error fetching food:', error);
+        res.status(500).send({ message: 'Server error fetching food' });
       }
     });
 
-    // update food by id
+    // update food
     app.put('/foods/:id', async (req, res) => {
-      const id = req.params.id;
-      const updatedFood = req.body;
       try {
+        const id = req.params.id;
+        const updatedFood = req.body;
         const result = await foodCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: updatedFood }
         );
         res.send(result);
       } catch (error) {
-        console.error(error);
+        console.error('Error updating food:', error);
+        res.status(500).send({ message: 'Server error updating food' });
       }
     });
 
-    //  delete a food by id
+    // update food status only
+    app.patch('/foods/:id', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { food_status } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: 'Invalid food ID' });
+        }
+
+        const result = await foodCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { food_status } }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: 'Food not found or already updated' });
+        }
+
+        res.send({ message: 'Food status updated successfully' });
+      } catch (error) {
+        console.error('Error updating food status:', error);
+        res.status(500).send({ message: 'Server error updating food status' });
+      }
+    });
+
+    // delete food
     app.delete('/foods/:id', async (req, res) => {
       try {
         const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await foodCollection.deleteOne(query);
+        const result = await foodCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
         res.send(result);
       } catch (error) {
-        console.error(error);
+        console.error('Error deleting food:', error);
+        res.status(500).send({ message: 'Server error deleting food' });
       }
     });
 
-    //post food req
+    // food requests
     app.post('/food-request', async (req, res) => {
       try {
         const request = req.body;
         request.foodId = new ObjectId(request.foodId);
         request.status = 'pending';
         request.createdAt = new Date().toISOString();
+
         const result = await foodRequestCollection.insertOne(request);
         res.send(result);
       } catch (err) {
-        console.error(err);
+        console.error('Error creating request:', err);
+        res.status(500).send({ message: 'Server error creating request' });
       }
     });
 
-    //food req by id
     app.get('/food-request/:foodId', async (req, res) => {
       try {
         const { foodId } = req.params;
-        if (!ObjectId.isValid(foodId))
+        if (!ObjectId.isValid(foodId)) {
           return res.status(400).send({ message: 'Invalid food ID' });
-        const requests = await foodRequestCollection.find({ foodId: new ObjectId(foodId) }).toArray();
+        }
+
+        const requests = await foodRequestCollection
+          .find({ foodId: new ObjectId(foodId) })
+          .toArray();
+
         res.send(requests);
       } catch (err) {
-        console.error(err);
+        console.error('Error fetching food requests:', err);
+        res
+          .status(500)
+          .send({ message: 'Server error fetching food requests' });
       }
     });
 
-    // update request status
+    // update food request status
     app.patch('/food-request/:id', async (req, res) => {
       try {
-        const id = req.params.id;
+        const { id } = req.params;
         const updatedData = req.body;
 
         if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: 'Invalid ID' });
+          return res.status(400).send({ message: 'Invalid request ID' });
         }
 
-        const query = { _id: new ObjectId(id) };
-        const updateDoc = { $set: updatedData };
-
-        const result = await foodRequestCollection.updateOne(query, updateDoc);
+        const result = await foodRequestCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedData }
+        );
 
         if (result.modifiedCount === 0) {
           return res.status(404).send({ message: 'No document updated' });
@@ -180,52 +223,55 @@ async function run() {
         const updatedRequest = await foodRequestCollection.findOne({
           _id: new ObjectId(id),
         });
+
         res.send(updatedRequest);
       } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: 'Server Error', error });
+        console.error('Error updating request status:', error);
+        res.status(500).send({ message: 'Server error updating request' });
       }
     });
 
-
-    // my food req manage
+    // delete food request
     app.delete('/food-request/:id', async (req, res) => {
       try {
         const { id } = req.params;
         const result = await foodRequestCollection.deleteOne({
           _id: new ObjectId(id),
         });
-        if (result.deletedCount === 1) {
-          res.send(result);
-        }
+        res.send(result);
       } catch (err) {
-        console.error(err);
+        console.error('Error deleting request:', err);
+        res.status(500).send({ message: 'Server error deleting request' });
       }
     });
 
-    // Get all requests made by a specific user
+    // get all requests by specific user 
     app.get('/my-request/:email', async (req, res) => {
       try {
         const { email } = req.params;
-        const requests = await foodRequestCollection.find({requesterEmail: email}).toArray();
+        const requests = await foodRequestCollection
+          .find({ requesterEmail: email })
+          .toArray();
         res.send(requests);
       } catch (err) {
-        console.error(err)
+        console.error('Error fetching user requests:', err);
+        res
+          .status(500)
+          .send({ message: 'Server error fetching user requests' });
       }
     });
-    
+
+    // start server 
     app.listen(port, () => {
-      console.log(`Example app listening on port ${port}`);
+      console.log(`Plate Share Server running on port ${port}`);
     });
-    
-  } catch(error) {
+  } catch (error) {
     console.error('Failed to connect to MongoDB or start server:', error);
   }
 }
 run().catch(console.dir);
 
+
 app.get('/', (req, res) => {
-  res.send(`Plate Share Server Running on ${port}`);
+  res.send(`Plate Share Server Running on port ${port}`);
 });
-
-
