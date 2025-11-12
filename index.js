@@ -206,14 +206,13 @@ async function run() {
         console.error(err)
       }
     });
-
-    // Send a ping to confirm a successful connection
-    await client.db('admin').command({ ping: 1 });
-    console.log(
-      'Pinged your deployment. You successfully connected to MongoDB!'
-    );
-  } finally {
-    //
+    
+    app.listen(port, () => {
+      console.log(`Example app listening on port ${port}`);
+    });
+    
+  } catch(error) {
+    console.error('Failed to connect to MongoDB or start server:', error);
   }
 }
 run().catch(console.dir);
@@ -222,6 +221,4 @@ app.get('/', (req, res) => {
   res.send(`Plate Share Server Running on ${port}`);
 });
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+
