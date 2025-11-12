@@ -149,7 +149,9 @@ async function run() {
     app.get('/food-request/:foodId', async (req, res) => {
       try {
         const { foodId } = req.params;
-        const requests = await foodRequestCollection.find({foodId: new ObjectId(foodId)}).toArray();
+        if (!ObjectId.isValid(foodId))
+          return res.status(400).send({ message: 'Invalid food ID' });
+        const requests = await foodRequestCollection.find({ foodId: new ObjectId(foodId) }).toArray();
         res.send(requests);
       } catch (err) {
         console.error(err);
@@ -159,27 +161,32 @@ async function run() {
     // update request status
     app.patch('/food-request/:id', async (req, res) => {
       try {
-        const { id } = req.params;
-        const { status } = req.body;
-        const request = await foodRequestCollection.findOne({
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: 'Invalid ID' });
+        }
+
+        const query = { _id: new ObjectId(id) };
+        const updateDoc = { $set: updatedData };
+
+        const result = await foodRequestCollection.updateOne(query, updateDoc);
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ message: 'No document updated' });
+        }
+
+        const updatedRequest = await foodRequestCollection.findOne({
           _id: new ObjectId(id),
         });
-        await foodRequestCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { status } }
-        );
-
-        if (status === 'accepted') {
-          await foodCollection.updateOne(
-            { _id: new ObjectId(request.foodId) },
-            { $set: { food_status: 'donated' } }
-          );
-        }
-        res.send(request);
-      } catch (err) {
-        console.error(err);
+        res.send(updatedRequest);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Server Error', error });
       }
     });
+
 
     // my food req manage
     app.delete('/food-request/:id', async (req, res) => {
