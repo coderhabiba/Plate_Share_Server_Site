@@ -69,6 +69,7 @@ async function run() {
     app.post('/foods', async (req, res) => {
       try {
         const newFood = req.body;
+
         if (!newFood.donator || !newFood.donator.email) {
           return res.status(400).send({ message: 'Donator info missing' });
         }
@@ -107,49 +108,35 @@ async function run() {
       }
     });
 
-    // update food
-    app.put('/foods/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const updatedFood = req.body;
-        const result = await foodCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updatedFood }
-        );
-        res.send(result);
-      } catch (error) {
-        console.error('Error updating food:', error);
-        res.status(500).send({ message: 'Server error updating food' });
-      }
-    });
+   app.patch('/foods/:id', async (req, res) => {
+     try {
+       const id = req.params.id;
+       const updateData = req.body;
+       const query = { _id: new ObjectId(id) };
 
-    // update food status only
-    app.patch('/foods/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { food_status } = req.body;
+       const updateDoc = {
+         $set: {
+           foodName: updateData.foodName,
+           foodImage: updateData.foodImage,
+           foodQuantityNumber: parseInt(updateData.foodQuantity),
+           pickupLocation: updateData.pickupLocation,
+           expireDate: updateData.expireDate,
+           notes: updateData.notes,
+           food_status: updateData.food_status || 'available',
+         },
+       };
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: 'Invalid food ID' });
-        }
+       const result = await foodCollection.updateOne(query, updateDoc);
 
-        const result = await foodCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { food_status } }
-        );
-
-        if (result.modifiedCount === 0) {
-          return res
-            .status(404)
-            .send({ message: 'Food not found or already updated' });
-        }
-
-        res.send({ message: 'Food status updated successfully' });
-      } catch (error) {
-        console.error('Error updating food status:', error);
-        res.status(500).send({ message: 'Server error updating food status' });
-      }
-    });
+       if (result.matchedCount > 0) {
+         res.send(result);
+       } else {
+         res.status(404).send({ message: 'Food item not found in database' });
+       }
+     } catch (error) {
+       res.status(500).send({ message: 'Update failed' });
+     }
+   });
 
     // delete food
     app.delete('/foods/:id', async (req, res) => {
@@ -245,7 +232,7 @@ async function run() {
       }
     });
 
-    // get all requests by specific user 
+    // get all requests by specific user
     app.get('/my-request/:email', async (req, res) => {
       try {
         const { email } = req.params;
@@ -261,7 +248,7 @@ async function run() {
       }
     });
 
-    // start server 
+    // start server
     app.listen(port, () => {
       console.log(`Plate Share Server running on port ${port}`);
     });
