@@ -113,7 +113,7 @@ async function run() {
        const id = req.params.id;
        const updateData = req.body;
        const query = { _id: new ObjectId(id) };
-
+       const status = quantity <= 0 ? 'donated' : 'available';
        const updateDoc = {
          $set: {
            foodName: updateData.foodName,
@@ -122,7 +122,7 @@ async function run() {
            pickupLocation: updateData.pickupLocation,
            expireDate: updateData.expireDate,
            notes: updateData.notes,
-           food_status: updateData.food_status || 'available',
+           food_status: status,
          },
        };
 
