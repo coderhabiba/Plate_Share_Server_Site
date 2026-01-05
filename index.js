@@ -30,33 +30,29 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
 
     const plateShareDb = client.db('plate_share_DB');
     const userCollection = plateShareDb.collection('users');
     const foodCollection = plateShareDb.collection('foods');
     const foodRequestCollection = plateShareDb.collection('food-requests');
 
-    // users
+    // ================== USERS APIs ==================
+
     app.get('/users', async (req, res) => {
       try {
         const users = await userCollection.find().toArray();
         res.send(users);
       } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).send({ message: 'Server error fetching users' });
+        res.status(500).send({ message: 'Error fetching users' });
       }
     });
 
-    //
     app.get('/users/role/:email', async (req, res) => {
       const email = req.params.email;
-      const query = { email: email };
-      const user = await userCollection.findOne(query);
+      const user = await userCollection.findOne({ email });
       res.send({ role: user?.role?.toLowerCase() || 'user' });
     });
 
-    // save user
     app.post('/users', async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
@@ -68,239 +64,155 @@ async function run() {
       res.send(result);
     });
 
-    // User Statistics API
-    app.get('/user-stats/:email', async (req, res) => {
-      try {
-        const email = req.params.email;
-
-        // total food 
-        const totalAdded = await foodCollection.countDocuments({
-          donorEmail: email,
-        });
-
-        // 
-        const totalRequested = await foodRequestCollection.countDocuments({
-          userEmail: email,
-        });
-
-        res.send({
-          totalAdded,
-          totalRequested,
-        });
-      } catch (error) {
-        console.error('Stats fetch error:', error);
-        res.status(500).send({ message: 'Internal server error' });
-      }
-    });
-
-    // to make co-admin by main admin
     app.patch('/users/admin/:id', async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          role: 'admin',
-        },
-      };
-      const result = await usersCollection.updateOne(filter, updatedDoc);
+      const updatedDoc = { $set: { role: 'admin' } };
+      const result = await userCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
 
-    // foods
-    app.post('/foods', async (req, res) => {
-      try {
-        const newFood = req.body;
+    // ================== STATISTICS APIs ==================
 
-        if (!newFood.donator || !newFood.donator.email) {
-          return res.status(400).send({ message: 'Donator info missing' });
-        }
-        newFood.food_status = newFood.food_status || 'available';
-        const result = await foodCollection.insertOne(newFood);
-        res.send(result);
+    // User-specific Stats
+    app.get('/user-stats/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        const totalAdded = await foodCollection.countDocuments({
+          'donator.email': email,
+        });
+        const totalRequested = await foodRequestCollection.countDocuments({
+          requesterEmail: email,
+        });
+        res.send({ totalAdded, totalRequested });
       } catch (error) {
-        console.error('Error adding food:', error);
-        res.status(500).send({ message: 'Server error adding food' });
+        res.status(500).send({ message: 'Stats error' });
       }
+    });
+
+    // Admin-wide Stats
+    app.get('/admin-stats', async (req, res) => {
+      try {
+        const totalUsers = await userCollection.countDocuments();
+        const totalFoods = await foodCollection.countDocuments();
+        const totalRequests = await foodRequestCollection.countDocuments();
+        const completedDonations = await foodRequestCollection.countDocuments({
+          status: 'delivered',
+        });
+        res.send({ totalUsers, totalFoods, totalRequests, completedDonations });
+      } catch (error) {
+        res.status(500).send({ message: 'Admin stats error' });
+      }
+    });
+
+    // ================== FOODS APIs ==================
+
+    app.post('/foods', async (req, res) => {
+      const newFood = req.body;
+      newFood.food_status = newFood.food_status || 'available';
+      const result = await foodCollection.insertOne(newFood);
+      res.send(result);
     });
 
     app.get('/foods', async (req, res) => {
-      try {
-        const { donatorEmail } = req.query;
-        let query = {};
-        if (donatorEmail) {
-          query = { 'donator.email': donatorEmail };
-        }
-        const foods = await foodCollection.find(query).toArray();
-        res.send(foods);
-      } catch (error) {
-        console.error('Error fetching foods:', error);
-        res.status(500).send({ message: 'Server error fetching foods' });
+      const { donatorEmail } = req.query;
+      let query = {};
+      if (donatorEmail) {
+        query = { 'donator.email': donatorEmail };
       }
+      const foods = await foodCollection.find(query).toArray();
+      res.send(foods);
     });
 
     app.get('/foods/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const food = await foodCollection.findOne({ _id: new ObjectId(id) });
-        res.send(food);
-      } catch (error) {
-        console.error('Error fetching food:', error);
-        res.status(500).send({ message: 'Server error fetching food' });
-      }
+      const id = req.params.id;
+      const food = await foodCollection.findOne({ _id: new ObjectId(id) });
+      res.send(food);
     });
 
     app.patch('/foods/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const updateData = req.body;
-        const query = { _id: new ObjectId(id) };
-        const quantity = parseInt(updateData.foodQuantity);
-        const status = quantity <= 0 ? 'donated' : 'available';
-        const updateDoc = {
-          $set: {
-            foodName: updateData.foodName,
-            foodImage: updateData.foodImage,
-            foodQuantityNumber: quantity,
-            pickupLocation: updateData.pickupLocation,
-            expireDate: updateData.expireDate,
-            notes: updateData.notes,
-            food_status: status,
-          },
-        };
-
-        const result = await foodCollection.updateOne(query, updateDoc);
-
-        if (result.matchedCount > 0) {
-          res.send(result);
-        } else {
-          res.status(404).send({ message: 'Food item not found in database' });
-        }
-      } catch (error) {
-        res.status(500).send({ message: 'Update failed' });
-      }
+      const id = req.params.id;
+      const updateData = req.body;
+      const quantity = parseInt(
+        updateData.foodQuantityNumber || updateData.foodQuantity
+      );
+      const status = quantity <= 0 ? 'donated' : 'available';
+      const updateDoc = {
+        $set: {
+          foodName: updateData.foodName,
+          foodImage: updateData.foodImage,
+          foodQuantityNumber: quantity,
+          pickupLocation: updateData.pickupLocation,
+          expireDate: updateData.expireDate,
+          notes: updateData.notes,
+          food_status: status,
+        },
+      };
+      const result = await foodCollection.updateOne(
+        { _id: new ObjectId(id) },
+        updateDoc
+      );
+      res.send(result);
     });
 
-    // delete food
     app.delete('/foods/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const result = await foodCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res.send(result);
-      } catch (error) {
-        console.error('Error deleting food:', error);
-        res.status(500).send({ message: 'Server error deleting food' });
-      }
+      const result = await foodCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
     });
 
-    // food requests
-    app.post('/food-request', async (req, res) => {
-      try {
-        const request = req.body;
-        request.foodId = new ObjectId(request.foodId);
-        request.status = 'pending';
-        request.createdAt = new Date().toISOString();
+    // ================== FOOD REQUESTS APIs ==================
 
-        const result = await foodRequestCollection.insertOne(request);
-        res.send(result);
-      } catch (err) {
-        console.error('Error creating request:', err);
-        res.status(500).send({ message: 'Server error creating request' });
-      }
+    app.post('/food-request', async (req, res) => {
+      const request = req.body;
+      request.foodId = new ObjectId(request.foodId);
+      request.status = 'pending';
+      request.createdAt = new Date().toISOString();
+      const result = await foodRequestCollection.insertOne(request);
+      res.send(result);
     });
 
     app.get('/food-request/:foodId', async (req, res) => {
-      try {
-        const { foodId } = req.params;
-        if (!ObjectId.isValid(foodId)) {
-          return res.status(400).send({ message: 'Invalid food ID' });
-        }
-
-        const requests = await foodRequestCollection
-          .find({ foodId: new ObjectId(foodId) })
-          .toArray();
-
-        res.send(requests);
-      } catch (err) {
-        console.error('Error fetching food requests:', err);
-        res
-          .status(500)
-          .send({ message: 'Server error fetching food requests' });
-      }
+      const { foodId } = req.params;
+      const requests = await foodRequestCollection
+        .find({ foodId: new ObjectId(foodId) })
+        .toArray();
+      res.send(requests);
     });
 
-    // update food request status
     app.patch('/food-request/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const updatedData = req.body;
-
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: 'Invalid request ID' });
-        }
-
-        const result = await foodRequestCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updatedData }
-        );
-
-        if (result.modifiedCount === 0) {
-          return res.status(404).send({ message: 'No document updated' });
-        }
-
-        const updatedRequest = await foodRequestCollection.findOne({
-          _id: new ObjectId(id),
-        });
-
-        res.send(updatedRequest);
-      } catch (error) {
-        console.error('Error updating request status:', error);
-        res.status(500).send({ message: 'Server error updating request' });
-      }
+      const { id } = req.params;
+      const result = await foodRequestCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: req.body }
+      );
+      res.send(result);
     });
 
-    // delete food request
     app.delete('/food-request/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const result = await foodRequestCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res.send(result);
-      } catch (err) {
-        console.error('Error deleting request:', err);
-        res.status(500).send({ message: 'Server error deleting request' });
-      }
+      const result = await foodRequestCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
     });
 
-    // get all requests by specific user
     app.get('/my-request/:email', async (req, res) => {
-      try {
-        const { email } = req.params;
-        const requests = await foodRequestCollection
-          .find({ requesterEmail: email })
-          .toArray();
-        res.send(requests);
-      } catch (err) {
-        console.error('Error fetching user requests:', err);
-        res
-          .status(500)
-          .send({ message: 'Server error fetching user requests' });
-      }
+      const requests = await foodRequestCollection
+        .find({ requesterEmail: req.params.email })
+        .toArray();
+      res.send(requests);
     });
-
-    // start server
-    app.listen(port, () => {
-      console.log(`Plate Share Server running on port ${port}`);
-    });
-  } catch (error) {
-    console.error('Failed to connect to MongoDB or start server:', error);
+  } finally {
+    
   }
 }
 run().catch(console.dir);
 
-
 app.get('/', (req, res) => {
-  res.send(`Plate Share Server Running on port ${port}`);
+  res.send(`Plate Share Server is Running`);
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
