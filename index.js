@@ -48,21 +48,37 @@ async function run() {
       }
     });
 
+    // 
+    app.get('/users/role/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      res.send({ role: user?.role?.toLowerCase() || 'user' });
+    });
+
+    // save user
     app.post('/users', async (req, res) => {
-      try {
-        const newUser = req.body;
-        const existingUser = await userCollection.findOne({
-          email: newUser.email,
-        });
-        if (existingUser) {
-          return res.status(409).send({ message: 'User already exists' });
-        }
-        const result = await userCollection.insertOne(newUser);
-        res.send(result);
-      } catch (error) {
-        console.error('Error adding user:', error);
-        res.status(500).send({ message: 'Server error adding user' });
+      const user = req.body;
+      const query = { email: user.email };
+      const isExist = await userCollection.findOne(query);
+      if (isExist) {
+        return res.send({ message: 'User already exists', insertedId: null });
       }
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // to make co-admin by main admin
+    app.patch('/users/admin/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: 'admin',
+        },
+      };
+      const result = await usersCollection.updateOne(filter, updatedDoc);
+      res.send(result);
     });
 
     // foods
@@ -108,35 +124,36 @@ async function run() {
       }
     });
 
-   app.patch('/foods/:id', async (req, res) => {
-     try {
-       const id = req.params.id;
-       const updateData = req.body;
-       const query = { _id: new ObjectId(id) };
-       const status = quantity <= 0 ? 'donated' : 'available';
-       const updateDoc = {
-         $set: {
-           foodName: updateData.foodName,
-           foodImage: updateData.foodImage,
-           foodQuantityNumber: parseInt(updateData.foodQuantity),
-           pickupLocation: updateData.pickupLocation,
-           expireDate: updateData.expireDate,
-           notes: updateData.notes,
-           food_status: status,
-         },
-       };
+    app.patch('/foods/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updateData = req.body;
+        const query = { _id: new ObjectId(id) };
+        const quantity = parseInt(updateData.foodQuantity);
+        const status = quantity <= 0 ? 'donated' : 'available';
+        const updateDoc = {
+          $set: {
+            foodName: updateData.foodName,
+            foodImage: updateData.foodImage,
+            foodQuantityNumber: quantity,
+            pickupLocation: updateData.pickupLocation,
+            expireDate: updateData.expireDate,
+            notes: updateData.notes,
+            food_status: status,
+          },
+        };
 
-       const result = await foodCollection.updateOne(query, updateDoc);
+        const result = await foodCollection.updateOne(query, updateDoc);
 
-       if (result.matchedCount > 0) {
-         res.send(result);
-       } else {
-         res.status(404).send({ message: 'Food item not found in database' });
-       }
-     } catch (error) {
-       res.status(500).send({ message: 'Update failed' });
-     }
-   });
+        if (result.matchedCount > 0) {
+          res.send(result);
+        } else {
+          res.status(404).send({ message: 'Food item not found in database' });
+        }
+      } catch (error) {
+        res.status(500).send({ message: 'Update failed' });
+      }
+    });
 
     // delete food
     app.delete('/foods/:id', async (req, res) => {
