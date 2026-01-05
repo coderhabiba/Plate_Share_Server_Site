@@ -48,7 +48,7 @@ async function run() {
       }
     });
 
-    // 
+    //
     app.get('/users/role/:email', async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
@@ -66,6 +66,31 @@ async function run() {
       }
       const result = await userCollection.insertOne(user);
       res.send(result);
+    });
+
+    // User Statistics API
+    app.get('/user-stats/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // total food 
+        const totalAdded = await foodCollection.countDocuments({
+          donorEmail: email,
+        });
+
+        // 
+        const totalRequested = await foodRequestCollection.countDocuments({
+          userEmail: email,
+        });
+
+        res.send({
+          totalAdded,
+          totalRequested,
+        });
+      } catch (error) {
+        console.error('Stats fetch error:', error);
+        res.status(500).send({ message: 'Internal server error' });
+      }
     });
 
     // to make co-admin by main admin
