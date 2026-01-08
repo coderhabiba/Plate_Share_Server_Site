@@ -173,6 +173,16 @@ async function run() {
       res.send(result);
     });
 
+    // get all food req
+    app.get('/food-request', async (req, res) => {
+      try {
+        const result = await foodRequestCollection.find().toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Error fetching requests' });
+      }
+    });
+
     app.get('/food-request/:foodId', async (req, res) => {
       const { foodId } = req.params;
       const requests = await foodRequestCollection
