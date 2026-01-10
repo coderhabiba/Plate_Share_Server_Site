@@ -30,7 +30,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-
     const plateShareDb = client.db('plate_share_DB');
     const userCollection = plateShareDb.collection('users');
     const foodCollection = plateShareDb.collection('foods');
@@ -70,6 +69,18 @@ async function run() {
       const updatedDoc = { $set: { role: 'admin' } };
       const result = await userCollection.updateOne(filter, updatedDoc);
       res.send(result);
+    });
+
+    //
+    app.delete('/users/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await userCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
     });
 
     // ================== STATISTICS APIs ==================
