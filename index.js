@@ -203,29 +203,44 @@ async function run() {
       res.send(requests);
     });
 
-    app.patch('/food-request/:id', async (req, res) => {
-      const id = req.params.id;
-      const { status, foodId } = req.body; // foodId
+   app.patch('/food-request/:id', async (req, res) => {
+     const id = req.params.id;
+     const { status, foodId } = req.body;
 
-      // (delivered)
-      const filter = { _id: new ObjectId(id) };
-      const updateReq = { $set: { status: status } };
-      const requestResult = await foodRequestCollection.updateOne(
-        filter,
-        updateReq
-      );
+     // pending -> delivered
+     const filter = { _id: new ObjectId(id) };
+     const updateReq = { $set: { status: status } };
+     const requestResult = await foodRequestCollection.updateOne(
+       filter,
+       updateReq
+     );
 
-      // Quantity 
-      if (status === 'delivered' && requestResult.modifiedCount > 0) {
-        const foodFilter = { _id: new ObjectId(foodId) };
-        const updateFoodDoc = {
-          $inc: { foodQuantityNumber: -1 }, 
-        };
-        await foodCollection.updateOne(foodFilter, updateFoodDoc);
-      }
+     //
+     if (status === 'delivered' && requestResult.modifiedCount > 0) {
+       const foodFilter = { _id: new ObjectId(foodId) };
 
-      res.send(requestResult);
-    });
+       //
+       const updateFoodDoc = {
+         $inc: { foodQuantityNumber: -1 },
+       };
+
+       //
+       const updatedFood = await foodCollection.findOneAndUpdate(
+         foodFilter,
+         updateFoodDoc,
+         { returnDocument: 'after' } //
+       );
+
+       // 'donated'
+       if (updatedFood && updatedFood.foodQuantityNumber <= 0) {
+         await foodCollection.updateOne(foodFilter, {
+           $set: { food_status: 'donated', foodQuantityNumber: 0 },
+         });
+       }
+     }
+
+     res.send(requestResult);
+   });
 
     app.delete('/food-request/:id', async (req, res) => {
       const id = req.params.id;
