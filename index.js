@@ -137,8 +137,9 @@ async function run() {
 
     app.get('/foods/:id', async (req, res) => {
       const id = req.params.id;
-      const food = await foodCollection.findOne({ _id: new ObjectId(id) });
-      res.send(food);
+      const query = { _id: new ObjectId(id) };
+      const result = await foodCollection.findOne(query);
+      res.send(result);
     });
 
     app.patch('/foods/:id', async (req, res) => {
@@ -203,18 +204,33 @@ async function run() {
     });
 
     app.patch('/food-request/:id', async (req, res) => {
-      const { id } = req.params;
-      const result = await foodRequestCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $set: req.body }
+      const id = req.params.id;
+      const { status, foodId } = req.body; // foodId
+
+      // (delivered)
+      const filter = { _id: new ObjectId(id) };
+      const updateReq = { $set: { status: status } };
+      const requestResult = await foodRequestCollection.updateOne(
+        filter,
+        updateReq
       );
-      res.send(result);
+
+      // Quantity 
+      if (status === 'delivered' && requestResult.modifiedCount > 0) {
+        const foodFilter = { _id: new ObjectId(foodId) };
+        const updateFoodDoc = {
+          $inc: { foodQuantityNumber: -1 }, 
+        };
+        await foodCollection.updateOne(foodFilter, updateFoodDoc);
+      }
+
+      res.send(requestResult);
     });
 
     app.delete('/food-request/:id', async (req, res) => {
-      const result = await foodRequestCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
-      });
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await foodRequestCollection.deleteOne(query);
       res.send(result);
     });
 
